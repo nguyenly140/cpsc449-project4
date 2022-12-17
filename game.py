@@ -8,11 +8,21 @@ import random
 import uuid
 from itertools import cycle
 
+import requests
+import json
+import dataclasses
+
 app = Quart(__name__)
 QuartSchema(app)
 app.config.from_file(f"./etc/{__name__}.toml", toml.load)
 
 dbs = None
+
+@dataclasses.dataclass
+class info:
+    usr: str
+    guesses: int 
+    win: str
 
 # async def _get_db():
 #     db = getattr(g, "_sqlite_db", None)
@@ -206,6 +216,7 @@ async def guess(gameId):
         abort(401, "Please provide the username")
 
     username = auth.username
+    password = auth.password
 
     body = await request.get_json()
     word = body.get("word").lower()
@@ -246,12 +257,27 @@ async def guess(gameId):
     # Not correct but valid
     secretWord = await db.fetch_one("SELECT word FROM correct WHERE id=:id", values={"id": game[2]})
     secretWord = secretWord[0]
-
+    
+    #print secret word for testing
+    print("secretword = ", secretWord)
+    
     primary_db = await _get_db(True)
+
+    # URL for callback
+    URL = "http://tuffixos/payload"
+    
 
     # guessed correctly
     if word == secretWord:
         await updateGameState(game, word, primary_db, 1)
+
+        # CALLBACK URL if won
+        winData = {"guesses": game[3] - 1, "usr": username, "win": "true"}
+        d = requests.post(URL, json=test, auth=(username, password))
+        print()
+        print("status_code =", d.status_code)
+        print(d.text)
+        print(d.url)
 
         return {"word": {"input": word, "valid": True, "correct": True}, 
         "numGuesses": game[3] - 1}
@@ -260,6 +286,16 @@ async def guess(gameId):
     await updateGameState(game, word, primary_db, 0)
 
     data = getGuessState(word, secretWord)
+    
+    # CALLBACK URL if lost
+    if (game[3] - 1) == 0:
+        lostData = {"guesses": game[3] - 1, "usr": username, "win": "false"}
+        c = requests.post(URL, json=test1, auth=(username, password))
+        print()
+        print("status_code =", c.status_code)
+        print(c.text)
+        print(c.url)
+
 
     return {"word": {"input": word, "valid": True, "correct": False}, 
         "gussesLeft": game[3] - 1, 
@@ -270,7 +306,7 @@ async def guess(gameId):
 @app.route("/my-games", methods=["GET"])
 async def myGames():
     db = await _get_db()
-
+    
     auth = request.authorization
 
     if not(auth) or not(auth.username):
@@ -307,6 +343,29 @@ async def getGame(gameId):
         return {"message": "No game found with this id"}, 404
     
     return await gameStateToDict(game)
+
+# -----------CLIENT REGISTER SCORE-----------
+
+@app.route("/payload", methods=["GET", "POST"])
+@validate_request(info)
+async def regScore(data: info):
+    gameData = dataclasses.asdict(data)
+
+    db = await _get_db()
+    
+    score = {"payload user: ": gameData["usr"], "payload numOfGueses: ": 6 - gameData["guesses"], "payload win: ": gameData["win"]}
+    
+    try:
+        await db.execute(
+                """
+                INSERT INTO gamescoreinfo(usr, numOfGuess, winning)
+                VALUES(:username, :numOfGuesses, :win)
+                """,
+                score,
+                )
+    except sqlite3.IntegrityError as e:                                                                                                                     abort(409, e)
+
+    return {"payload user: ": gameData["usr"], "payload numOfGueses: ": 6 - gameData["guesses"], "payload win: ": gameData["win"]}
 
 # game
 # 0 = id

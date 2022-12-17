@@ -6,3 +6,4 @@ score: hypercorn score --reload --debug --bind score.local.gd:$PORT --access-log
 primary: ./bin/litefs -config ./etc/primary.yml
 secondary1: ./bin/litefs -config ./etc/secondary1.yml
 secondary2: ./bin/litefs -config ./etc/secondary2.yml
+webhook: hypercorn server --reload --debug --bind webhook.local.gd:$PORT --access-logfile - --error-logfile - --log-level DEBUG

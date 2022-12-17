@@ -6,6 +6,7 @@ from quart import Quart, g, request, jsonify, abort
 from quart_schema import validate_request, RequestSchemaValidationError, QuartSchema
 import redis
 
+import httpx
 
 app = Quart(__name__)
 QuartSchema(app)
