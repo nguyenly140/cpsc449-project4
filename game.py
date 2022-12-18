@@ -11,6 +11,8 @@ from itertools import cycle
 import requests
 import json
 import dataclasses
+import socket
+import os
 
 app = Quart(__name__)
 QuartSchema(app)
@@ -20,9 +22,10 @@ dbs = None
 
 @dataclasses.dataclass
 class info:
-    usr: str
+    username: str
     guesses: int 
     win: str
+    winstreak: int
 
 # async def _get_db():
 #     db = getattr(g, "_sqlite_db", None)
@@ -201,6 +204,14 @@ async def newGame():
         """,
         data)
 
+    print("getfqdn ", socket.getfqdn())
+    print("gethostname ", socket.gethostname())
+    print("gethostbyname(getfqdn) ", socket.gethostbyname(socket.getfqdn()))
+    print("gethostbyname(gethostname) ", socket.gethostbyname(socket.gethostname()))
+    print("os.environ['127.0.1.1'] ", os.environ['127.0.1.1'])
+    print("fsencode ", os.fsencode('game.py'))
+    print('fsdecode ', os.fsdecode('score.py'))
+    
     res = {"gameId": gameId, "guesses": 6}
     return res, 201
 
@@ -264,7 +275,7 @@ async def guess(gameId):
     primary_db = await _get_db(True)
 
     # URL for callback
-    URL = "http://tuffixos/payload"
+    URL = "http://tuffixos/regscore"
     
 
     # guessed correctly
@@ -272,12 +283,11 @@ async def guess(gameId):
         await updateGameState(game, word, primary_db, 1)
 
         # CALLBACK URL if won
-        winData = {"guesses": game[3] - 1, "usr": username, "win": "true"}
-        d = requests.post(URL, json=test, auth=(username, password))
-        print()
-        print("status_code =", d.status_code)
-        print(d.text)
-        print(d.url)
+        winData = {"guesses": game[3] - 1, "usr": username, "win": "true", "winstreak": 1}
+        
+        # POST request used to push data into the regscore endpoint
+        postURLWinScore = requests.post(URL, json=winData, auth=(username, password))
+        print("status_code =", postURLWinScore.status_code)
 
         return {"word": {"input": word, "valid": True, "correct": True}, 
         "numGuesses": game[3] - 1}
@@ -289,14 +299,11 @@ async def guess(gameId):
     
     # CALLBACK URL if lost
     if (game[3] - 1) == 0:
-        lostData = {"guesses": game[3] - 1, "usr": username, "win": "false"}
-        c = requests.post(URL, json=test1, auth=(username, password))
-        print()
-        print("status_code =", c.status_code)
-        print(c.text)
-        print(c.url)
+        lostData = {"guesses": game[3] - 1, "usr": username, "win": "false", "winstreak": 0}
+        postURLLostScore = requests.post(URL, json=lostData, auth=(username, password))
+        print("status_code =", postURLLostScore.status_code)
 
-
+    print(socket.gethostbyname(socket.getfqdn()))
     return {"word": {"input": word, "valid": True, "correct": False}, 
         "gussesLeft": game[3] - 1, 
         "data": data}
@@ -346,26 +353,41 @@ async def getGame(gameId):
 
 # -----------CLIENT REGISTER SCORE-----------
 
-@app.route("/payload", methods=["GET", "POST"])
+@app.route("/regscore", methods=["GET", "POST"])
 @validate_request(info)
 async def regScore(data: info):
-    gameData = dataclasses.asdict(data)
-
     db = await _get_db()
-    
-    score = {"payload user: ": gameData["usr"], "payload numOfGueses: ": 6 - gameData["guesses"], "payload win: ": gameData["win"]}
-    
-    try:
-        await db.execute(
-                """
-                INSERT INTO gamescoreinfo(usr, numOfGuess, winning)
-                VALUES(:username, :numOfGuesses, :win)
-                """,
-                score,
-                )
-    except sqlite3.IntegrityError as e:                                                                                                                     abort(409, e)
 
-    return {"payload user: ": gameData["usr"], "payload numOfGueses: ": 6 - gameData["guesses"], "payload win: ": gameData["win"]}
+    if quart.request.method == 'POST':
+        gameData = dataclasses.asdict(data)
+        score = {"user: ": gameData["usr"], "numOfGueses: ": 6 - gameData["guesses"], "win: ": gameData["win"], ""}
+        winstreakCount = await db.fetch_one("SELECT winstreak FROM gamescoreinfo WHERE usr=:usr", values={"usr": gameData["usr"]})
+        if winstreakCount:
+            await db.execute(
+                    """
+                    UPDATE gamescoreinfo SET winstreak=:winstreak, WHERE usr=:username
+                    """,
+                    values={"winstreak": winstreakCount+1, "username": gameData["usr"]},
+                    )
+        else:    
+            try:
+                await db.execute(
+                        """
+                        INSERT INTO gamescoreinfo(usr, numOfGuess, winning)
+                        VALUES(:username, :numOfGuesses, :win, :winstreak)
+                        """,
+                        gameData,
+                        )
+            except sqlite3.IntegrityError as e:                                                                                                                     abort(409, e)
+    else:
+        userScore = await db.execute(
+                """
+                SELECT usr, winstreak FROM gamescoreinfo ORDER BY winstreak DESC
+                """
+                )
+
+    #return {"payload user: ": gameData["usr"], "payload numOfGueses: ": 6 - gameData["guesses"], "payload win: ": gameData["win"]}
+    return 
 
 # game
 # 0 = id

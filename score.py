@@ -73,11 +73,15 @@ async def get_scores():
     host='127.0.0.1',
     port=6379,
     password='')
+
+    r = httpx.get("http://tuffixos/getscore", param)
+
     # GLOABAL VARIABLES
     table = 'leaderboard'
 
     output = []
     top10data = r.zrevrange(table, 0, -1, withscores=True)
+
 
     for i in range(len(top10data)):
         name = top10data[i][0].decode()

@@ -14872,8 +14872,7 @@ INSERT INTO correct VALUES(2309,'augur');
 DROP TABLE IF EXISTS "game";
 CREATE TABLE "game"(
     id TEXT PRIMARY KEY,
-    username TEXT, 
-    wordId INTEGER,
+    username TEXT, wordId INTEGER,
     guesses INTEGER DEFAULT 6,
     finished BIT DEFAULT 0,
 	guess1 VARCHAR(5) DEFAULT "", 
@@ -14890,7 +14889,8 @@ DROP TABLE IF EXISTS 'callbackURL';
 CREATE TABLE "gamescoreinfo"(
   usr TEXT, PRIMARY KEY
   numOfGuess INTEGER,
-  winning VARCHAR(5) 
+  win VARCHAR(5),
+  winstreak INTEGER
 );
 
 CREATE INDEX correct_idx_00017a64 ON correct(word);
